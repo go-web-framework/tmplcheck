@@ -1,7 +1,6 @@
 package main
 
 import (
-	"fmt"
 	"io/ioutil"
 	"os"
 	"path/filepath"
@@ -40,87 +39,6 @@ ListNode is used for traversals. In addition to the Tree root, it is present in 
 
 */
 
-// identifier, or const, or field in commandnode.
-
-func printpipe(p *tparse.PipeNode) {
-	fmt.Println("  printing pipe node", p)
-	fmt.Println("    decl", p.Decl)
-	fmt.Println("    commands", p.Cmds)
-}
-
-// TODO: DELETE
-func p(listnode *tparse.ListNode) {
-	for _, n := range listnode.Nodes {
-		fmt.Println("\ntype :", n.Type())
-
-		switch nn := n.(type) {
-		case *tparse.ListNode:
-			fmt.Println("encountered list node", nn)
-			p(nn)
-
-		case *tparse.ActionNode:
-			fmt.Println("encountered action node", nn)
-			fmt.Println("corresponding pipe node", nn.Pipe)
-			printpipe(nn.Pipe)
-
-		case *tparse.PipeNode:
-			fmt.Println("direct pipe node", nn)
-			printpipe(nn)
-
-		case *tparse.RangeNode:
-			fmt.Println("range node", nn)
-			fmt.Println("corresponding list node", nn.BranchNode.List)
-			fmt.Println("corresponding pipe node", nn.BranchNode.Pipe)
-			printpipe(nn.BranchNode.Pipe)
-
-		case *tparse.BranchNode:
-			fmt.Println("BRANCH node", nn)
-			fmt.Println("corresponding list node", nn.List) // Need to look at non-nil ElseList also.
-			fmt.Println("corresponding pipe node", nn.Pipe)
-			printpipe(nn.Pipe)
-
-		case *tparse.IfNode:
-			fmt.Println("if node", nn)
-			fmt.Println("corresponding list node", nn.BranchNode.List)
-			fmt.Println("corresponding pipe node", nn.BranchNode.Pipe)
-			printpipe(nn.BranchNode.Pipe)
-
-		case *tparse.WithNode:
-			fmt.Println("with node", nn)
-			fmt.Println("corresponding list node", nn.BranchNode.List)
-			fmt.Println("corresponding pipe node", nn.BranchNode.Pipe)
-			printpipe(nn.BranchNode.Pipe)
-
-		case *tparse.TemplateNode:
-			fmt.Println("template node", nn)
-			fmt.Println("corresponding pipe node", nn.Pipe)
-			printpipe(nn.Pipe)
-		}
-	}
-
-	return
-
-	for _, n := range listnode.Nodes {
-		fmt.Println(n.Type())
-
-		switch nn := n.(type) {
-		case *tparse.ListNode:
-			fmt.Println("list", nn)
-			p(nn)
-		case *tparse.CommandNode, *tparse.ChainNode, *tparse.FieldNode:
-			fmt.Println("ccf")
-			fmt.Println(nn)
-		case *tparse.ActionNode:
-			fmt.Println("act")
-			fmt.Println(nn)
-			fmt.Println(nn.Pipe.Cmds, nn.Pipe.Decl)
-		case *tparse.RangeNode:
-			fmt.Println(nn.Pipe.Cmds, nn.Pipe.Decl)
-		}
-	}
-}
-
-// TODO
 func parseTemplates(root string) (map[string][]templateIdents, error) {
 	ret := make(map[string][]templateIdents)
 
