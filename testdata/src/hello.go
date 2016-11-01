@@ -10,6 +10,7 @@ import (
 type Foo struct {
 	Name  string
 	Title string
+	FF    string
 }
 
 type League struct {
@@ -26,7 +27,7 @@ func main() {
 
 	//////////////////////////////////////////////////////////////////////////////////////
 
-	err = templateSet.Execute("hello.html", os.Stdout, Foo{Name: "Alice"})
+	err = templateSet.Execute("hello.html", os.Stdout, Foo{FF: "", Name: "Alice"})
 	if err != nil {
 		log.Fatalln(err)
 	}

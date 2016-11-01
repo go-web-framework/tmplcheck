@@ -6,6 +6,7 @@ import (
 	"flag"
 	"fmt"
 	"go/ast"
+	"go/token"
 	"os"
 	"sync"
 
@@ -67,7 +68,8 @@ func main() {
 	var results []checkResult
 
 	for k, v := range identsForTemplateFile {
-		r := check(v, usages[fmt.Sprintf("%q", k)])
+		u := usages[fmt.Sprintf("%q", k)]
+		r := check(v, u)
 		r.TemplateFile = k
 		results = append(results, r)
 	}
@@ -93,12 +95,13 @@ func (c checkResult) String() string {
 type MissingError struct {
 	TemplatePos tparse.Pos
 	SourceFile  string
-	SourcePos   int // TODO: not supported yet.
+	SourcePos   token.Pos // TODO: not supported yet.
 	Key         string
+	Call        string // TODO: Also get object name.
 }
 
 func (e *MissingError) Error() string {
-	return fmt.Sprintf("%v: Missing key %q", e.TemplatePos, e.Key)
+	return fmt.Sprintf("%v: Missing key %q in call %q at <filename>:%v", e.TemplatePos, e.Key, e.Call, e.SourcePos)
 }
 
 func containsString(slice []string, target string) bool {
@@ -128,6 +131,8 @@ func check(t []templateIdents, pkgUsages []usage) checkResult {
 					res.Errs = append(res.Errs, &MissingError{
 						TemplatePos: tident.Pos,
 						Key:         s,
+						SourcePos:   u.Pos,
+						Call:        u.Call,
 					})
 				}
 			}
@@ -300,11 +305,14 @@ func match(typ, funcName string) (call, bool) {
 type usage struct {
 	Template string   // name of template
 	Keys     []string // keys passed to template
+	Pos      token.Pos
+	Call     string
 }
 
 func parsePackage(path string) (map[string][]usage, error) {
 	var conf loader.Config
 
+	// TODO: create from filenames to support source file name.
 	_, err := conf.FromArgs([]string{path}, false)
 	if err != nil {
 		return nil, err
@@ -347,7 +355,7 @@ func parsePackage(path string) (map[string][]usage, error) {
 					retErr = err
 					return false
 				}
-				ret[name] = append(ret[name], usage{name, keys})
+				ret[name] = append(ret[name], usage{Template: name, Keys: keys, Pos: x.Fun.Pos(), Call: funcName})
 			}
 
 			return true
