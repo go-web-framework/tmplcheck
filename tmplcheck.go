@@ -216,6 +216,8 @@ func match(typ, funcName string) (call, bool) {
 }
 
 // usage represents a call to template with the keys.
+//
+// TODO: Include the file name and pos.
 type usage struct {
 	Template string   // name of template
 	Keys     []string // keys passed to template
