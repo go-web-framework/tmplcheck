@@ -1,6 +1,7 @@
 package main
 
 import (
+	"bytes"
 	"errors"
 	"flag"
 	"fmt"
@@ -8,8 +9,12 @@ import (
 	"os"
 	"sync"
 
+	tparse "text/template/parse"
+
 	"golang.org/x/tools/go/loader"
 )
+
+// TODO: Support output formats: json, xml.
 
 var (
 	TemplatesPath string
@@ -37,8 +42,8 @@ func main() {
 
 	var wg sync.WaitGroup
 
-	var usages []usage
-	var keysByTemplate map[string][]templateIdents
+	var usages map[string][]usage
+	var identsForTemplateFile map[string][]templateIdents
 	var err0, err1 error
 
 	wg.Add(1)
@@ -50,13 +55,87 @@ func main() {
 	wg.Add(1)
 	go func() {
 		defer wg.Done()
-		keysByTemplate, err1 = parseTemplates(TemplatesPath)
+		identsForTemplateFile, err1 = parseTemplates(TemplatesPath)
 	}()
 
 	wg.Wait()
 
-	fmt.Println(usages, err0)
-	fmt.Println(keysByTemplate, err1)
+	// TODO: Implement decent way to show warnings.
+	// fmt.Println(usages, err0)
+	// fmt.Println(identsForTemplateFile, err1)
+
+	var results []checkResult
+
+	for k, v := range identsForTemplateFile {
+		r := check(v, usages[fmt.Sprintf("%q", k)])
+		r.TemplateFile = k
+		results = append(results, r)
+	}
+
+	for _, r := range results {
+		fmt.Println(&r)
+	}
+}
+
+type checkResult struct {
+	TemplateFile string
+	Errs         []error
+}
+
+func (c checkResult) String() string {
+	buf := bytes.Buffer{}
+	for _, e := range c.Errs {
+		buf.WriteString(fmt.Sprintf("%s: %v\n", c.TemplateFile, e))
+	}
+	return buf.String()
+}
+
+type MissingError struct {
+	TemplatePos tparse.Pos
+	SourceFile  string
+	SourcePos   int // TODO: not supported yet.
+	Key         string
+}
+
+func (e *MissingError) Error() string {
+	return fmt.Sprintf("%v: Missing key %q", e.TemplatePos, e.Key)
+}
+
+func containsString(slice []string, target string) bool {
+	for _, str := range slice {
+		if target == str {
+			return true
+		}
+	}
+	return false
+}
+
+func check(t []templateIdents, pkgUsages []usage) checkResult {
+	// For every identifier in a template, every usage/call to the template
+	// should contain that identifier. In other words, for every identifier
+	// in a template, if there is any usage/call to the template not containing the
+	// identifier then we should emit a warning or error.
+
+	res := checkResult{}
+
+	for _, tident := range t {
+		for _, s := range tident.Idents {
+
+			for _, u := range pkgUsages {
+				if containsString(u.Keys, s) {
+					continue
+				} else {
+					res.Errs = append(res.Errs, &MissingError{
+						TemplatePos: tident.Pos,
+						Key:         s,
+					})
+				}
+			}
+
+		}
+	}
+
+	return res
 }
 
 // identValue returns the first value for the ident.
@@ -223,10 +302,7 @@ type usage struct {
 	Keys     []string // keys passed to template
 }
 
-// The return value is a slice of `usage` (not a map[Template]Args),
-// because a single package can make multiple calls to the same template
-// with different args.
-func parsePackage(path string) ([]usage, error) {
+func parsePackage(path string) (map[string][]usage, error) {
 	var conf loader.Config
 
 	_, err := conf.FromArgs([]string{path}, false)
@@ -241,7 +317,7 @@ func parsePackage(path string) ([]usage, error) {
 
 	ourpkg := prog.Package(path)
 
-	var ret []usage
+	ret := make(map[string][]usage)
 	var retErr error
 
 	for _, f := range ourpkg.Files {
@@ -271,7 +347,7 @@ func parsePackage(path string) ([]usage, error) {
 					retErr = err
 					return false
 				}
-				ret = append(ret, usage{name, keys})
+				ret[name] = append(ret[name], usage{name, keys})
 			}
 
 			return true
