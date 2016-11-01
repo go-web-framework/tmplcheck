@@ -7,7 +7,6 @@ import (
 	"go/ast"
 	"os"
 	"sync"
-	tparse "text/template/parse"
 
 	"golang.org/x/tools/go/loader"
 )
@@ -39,6 +38,7 @@ func main() {
 	var wg sync.WaitGroup
 
 	var usages []usage
+	var keysByTemplate map[string][]templateIdents
 	var err0, err1 error
 
 	wg.Add(1)
@@ -50,30 +50,13 @@ func main() {
 	wg.Add(1)
 	go func() {
 		defer wg.Done()
-		_, err1 = parseTemplates(TemplatesPath)
+		keysByTemplate, err1 = parseTemplates(TemplatesPath)
 	}()
 
 	wg.Wait()
 
 	fmt.Println(usages, err0)
-
-	// b, err := ioutil.ReadFile("testdata/hello.html")
-	// if err != nil {
-	// fmt.Fprintln(os.Stderr, err)
-	// os.Exit(-1)
-	// }
-
-	// m, err := tparse.Parse("hello", string(b), LeftDelim, RightDelim)
-
-	// if err != nil {
-	// fmt.Fprintln(os.Stderr, err)
-	// os.Exit(-1)
-	// }
-
-	// fmt.Printf("%#v", m["hello"])
-
-	// tree := m["hello"]
-	// p(tree.Root)
+	fmt.Println(keysByTemplate, err1)
 }
 
 // identValue returns the first value for the ident.
@@ -87,28 +70,6 @@ func identValue(a *ast.Ident) (string, error) {
 	}
 	return vspec.Values[0].(*ast.BasicLit).Value, nil
 }
-
-type call interface {
-	Type() []string
-	Func() []string
-	Handler(callexpr *ast.CallExpr) (name string, keys []string, err error)
-}
-
-var errUnsupportedArgs = errors.New("unsupported type for arguments")
-
-var templatePackages = []call{
-	&templatesSet{},
-	&htmltemplateTemplate{}, // Order matters: Support html/template before text/template.
-	&texttemplateTemplate{},
-}
-
-type templatesSet struct{}
-
-func (t *templatesSet) Type() []string {
-	return []string{"github.com/go-web-framework/templates.Set", "*github.com/go-web-framework/templates.Set"}
-}
-
-func (t *templatesSet) Func() []string { return []string{"Execute"} }
 
 func compositeLitKeys(comp *ast.CompositeLit) []string {
 	var ret []string
@@ -138,6 +99,28 @@ func identToCompositeLit(id *ast.Ident) (*ast.CompositeLit, error) {
 	return cl, nil
 }
 
+type call interface {
+	Type() []string
+	Func() []string
+	Handler(callexpr *ast.CallExpr) (name string, keys []string, err error)
+}
+
+var errUnsupportedArgs = errors.New("unsupported type for arguments")
+
+var templatePackages = []call{
+	&templatesSet{},
+	&htmltemplateTemplate{}, // Order matters: Support html/template before text/template.
+	&texttemplateTemplate{},
+}
+
+type templatesSet struct{}
+
+func (t *templatesSet) Type() []string {
+	return []string{"github.com/go-web-framework/templates.Set", "*github.com/go-web-framework/templates.Set"}
+}
+
+func (t *templatesSet) Func() []string { return []string{"Execute"} }
+
 // Handler is the handler for templates.Set.
 //
 // Arguments support:
@@ -145,7 +128,7 @@ func identToCompositeLit(id *ast.Ident) (*ast.CompositeLit, error) {
 //   1. composite literals: Foo{X: Y}, map[KeyType]ValueType{x: y}
 //   2. ident -> composite literal.
 //
-// If the composite literal is a map, only literal maps are supported. That is,
+// If the composite literal is a map, only literal, in-place maps are supported. That is,
 //
 //   s.Execute(.., .., map[string]interface{} {
 //     "qux": 2,
@@ -154,7 +137,7 @@ func identToCompositeLit(id *ast.Ident) (*ast.CompositeLit, error) {
 //
 // is supported. But not:
 //
-//   m := map[string]interface{}
+//   m := map[string]interface{}{}
 //   m["qux"] = 2
 //   s.Execute(.., .., m)
 //
@@ -294,35 +277,4 @@ func parsePackage(path string) ([]usage, error) {
 	}
 
 	return ret, retErr
-}
-
-// TODO
-func parseTemplates(path string) ([]usage, error) {
-	return nil, nil
-}
-
-// TODO
-func parseTemplate(fpath string) error {
-	return nil
-}
-
-// TODO: DELETE
-func p(listnode *tparse.ListNode) {
-	for _, n := range listnode.Nodes {
-		fmt.Println(n.Type())
-
-		switch nn := n.(type) {
-		case *tparse.ListNode:
-			p(nn)
-		case *tparse.CommandNode, *tparse.ChainNode, *tparse.FieldNode:
-			fmt.Println("ccf")
-			fmt.Println(nn)
-		case *tparse.ActionNode:
-			fmt.Println("act")
-			fmt.Println(nn)
-			fmt.Println(nn.Pipe.Cmds, nn.Pipe.Decl)
-		case *tparse.RangeNode:
-			fmt.Println(nn.Pipe.Cmds, nn.Pipe.Decl)
-		}
-	}
 }
