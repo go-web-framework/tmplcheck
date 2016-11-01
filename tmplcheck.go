@@ -13,6 +13,10 @@ import (
 	tparse "text/template/parse"
 
 	"golang.org/x/tools/go/loader"
+
+	"encoding/json"
+	"path/filepath"
+	"strings"
 )
 
 // TODO: Support output formats: json, xml.
@@ -77,11 +81,17 @@ func main() {
 	for _, r := range results {
 		fmt.Println(&r)
 	}
+	
+	_, err := json.MarshalIndent(results, "", "	")
+	if err != nil{
+		fmt.Println("json failed")
+	}
+	/*fmt.Println(string(jsonOutput))*/
 }
 
 type checkResult struct {
-	TemplateFile string
-	Errs         []error
+	TemplateFile string `json:"TemplateFile"`
+	Errs         []error `json:"Errs"`
 }
 
 func (c checkResult) String() string {
@@ -101,7 +111,7 @@ type MissingError struct {
 }
 
 func (e *MissingError) Error() string {
-	return fmt.Sprintf("%v: Missing key %q in call %q at <filename>:%v", e.TemplatePos, e.Key, e.Call, e.SourcePos)
+	return fmt.Sprintf("%v: Missing key %q in call %q at %q:%v", e.TemplatePos, e.Key, e.Call,e.SourceFile, e.SourcePos)
 }
 
 func containsString(slice []string, target string) bool {
@@ -130,6 +140,7 @@ func check(t []templateIdents, pkgUsages []usage) checkResult {
 				} else {
 					res.Errs = append(res.Errs, &MissingError{
 						TemplatePos: tident.Pos,
+						SourceFile:	 u.Filename,
 						Key:         s,
 						SourcePos:   u.Pos,
 						Call:        u.Call,
@@ -307,11 +318,20 @@ type usage struct {
 	Keys     []string // keys passed to template
 	Pos      token.Pos
 	Call     string
+	Filename string
 }
 
 func parsePackage(path string) (map[string][]usage, error) {
 	var conf loader.Config
-
+	var files []string = []string{}
+	//edge cases?
+	filepath.Walk(path, func(path string, f os.FileInfo, err error) error{
+		if (string(path[len(path) - 3:]) == ".go"){
+			files = append(files, path)
+		}
+		return nil
+	})
+	conf.CreateFromFilenames(path, files...)
 	// TODO: create from filenames to support source file name.
 	_, err := conf.FromArgs([]string{path}, false)
 	if err != nil {
@@ -327,8 +347,10 @@ func parsePackage(path string) (map[string][]usage, error) {
 
 	ret := make(map[string][]usage)
 	var retErr error
+	
 
-	for _, f := range ourpkg.Files {
+	for index, f := range ourpkg.Files {
+		
 		ast.Inspect(f, func(n ast.Node) bool {
 			switch x := n.(type) {
 			case *ast.CallExpr:
@@ -355,7 +377,9 @@ func parsePackage(path string) (map[string][]usage, error) {
 					retErr = err
 					return false
 				}
-				ret[name] = append(ret[name], usage{Template: name, Keys: keys, Pos: x.Fun.Pos(), Call: funcName})
+				//want to include entire path?
+				fileNameSplit := strings.Split(conf.CreatePkgs[0].Filenames[index], "/")
+				ret[name] = append(ret[name], usage{Template: name, Keys: keys, Pos: x.Fun.Pos(), Call: funcName, Filename: fileNameSplit[len(fileNameSplit) - 1]})
 			}
 
 			return true
