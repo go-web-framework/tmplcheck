@@ -1,0 +1,13 @@
+{
+	"comment": "",
+	"ignore": "test",
+	"package": [
+		{
+			"checksumSHA1": "6WmStP5J/AjlfnArH4VIOMamzzI=",
+			"path": "github.com/go-web-framework/templates",
+			"revision": "31ace54d69944a07c15315d32f61cc792a19581c",
+			"revisionTime": "2016-11-08T00:21:29Z"
+		}
+	],
+	"rootPath": "github.com/go-web-framework/tmplcheck/testdata/src"
+}
