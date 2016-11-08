@@ -1,10 +1,12 @@
 # tmplcheck
 
+[![wercker status](https://app.wercker.com/status/733965ba5063a29ddf1aa17556713f7e/s/master "wercker status")](https://app.wercker.com/project/byKey/733965ba5063a29ddf1aa17556713f7e)
+
 tmplcheck checks that templates do not use keys not passed in from Go source code in Execute calls.
 
 Currently only supports `github.com/go-web-framework/templates`. Future support for `html/template` and `text/template` is planned.
 
-tmplcheck statically analyzes your source code and templates so that you do not have to deal with panics at run time such as:
+tmplcheck statically analyzes your source code and templates to help prevent panics at run time such as:
 
 ```
 panic: template: test:1:2: executing "test" at <.Cnt>: can't evaluate field Cnt in type main.Inventory
@@ -22,7 +24,7 @@ go get -u github.com/go-web-framework/tmplcheck
 
 ```sh
 tmplcheck \
-    -p <go import path of source code> \
+    -p <import path of go code> \
     -t <path to templates> \
     -format <plain|json>
 ```
