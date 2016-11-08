@@ -42,4 +42,5 @@ build:
     - script:
         name: go test
         code: |
+          go get -u github.com/go-web-framework/templates
           go test -race ./...
