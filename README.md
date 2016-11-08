@@ -72,7 +72,7 @@ import (
 )
 
 func main() {
-	set := &templates.Set{DefaultArgs: templates.Args{"Title": "default title"}}
+	set := &templates.Set{}
 	err := set.Parse(filepath.Join("..", "templates"))
 	if err != nil {
 		log.Fatalln(err)

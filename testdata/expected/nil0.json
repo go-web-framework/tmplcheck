@@ -1,0 +1,46 @@
+[
+  {
+    "template": "root.html",
+    "missing": [
+      {
+        "template": {
+          "file": "root.html",
+          "line": 5,
+          "col": 13
+        },
+        "source": {
+          "file": "hello.go",
+          "line": 18,
+          "key": "Title",
+          "call": "set.Execute"
+        }
+      },
+      {
+        "template": {
+          "file": "root.html",
+          "line": 8,
+          "col": 14
+        },
+        "source": {
+          "file": "hello.go",
+          "line": 18,
+          "key": "X",
+          "call": "set.Execute"
+        }
+      },
+      {
+        "template": {
+          "file": "root.html",
+          "line": 8,
+          "col": 17
+        },
+        "source": {
+          "file": "hello.go",
+          "line": 18,
+          "key": "Y",
+          "call": "set.Execute"
+        }
+      }
+    ]
+  }
+]

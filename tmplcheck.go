@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"go/ast"
 	"go/token"
+	"io"
 	"os"
 	"path/filepath"
 	"strings"
@@ -73,17 +74,17 @@ func exitErr(v interface{}) {
 	os.Exit(1)
 }
 
-func output(results []checkResult) {
+func output(w io.Writer, results []checkResult) {
 	switch OutputFormat {
 	case "plain":
 		for i, r := range results {
-			fmt.Println(&r)
+			fmt.Fprintln(w, &r)
 			if i != len(results)-1 {
-				fmt.Println()
+				fmt.Fprintln(w)
 			}
 		}
 	case "json":
-		enc := json.NewEncoder(os.Stdout)
+		enc := json.NewEncoder(w)
 		enc.SetIndent("", "  ")
 		if err := enc.Encode(results); err != nil {
 			exitErr(err)
@@ -94,7 +95,7 @@ func output(results []checkResult) {
 func mainImpl() {
 	checkArgs()
 	results := DoAll()
-	output(results)
+	output(os.Stdout, results)
 }
 
 func containsString(slice []string, target string) bool {
