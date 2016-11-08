@@ -17,6 +17,7 @@ import (
 // TODO:
 // * Support for warnings
 // * Nested calls, better static analysis, check reflection code for panics
+// * Default args in Set should be considered in analysis
 // * Support for html/template and text/template
 // * Colorize plain text output
 
