@@ -3,6 +3,7 @@ package main
 import (
 	"log"
 	"os"
+	"path/filepath"
 
 	"github.com/go-web-framework/templates"
 )
@@ -19,54 +20,13 @@ type League struct {
 }
 
 func main() {
-	templateSet := &templates.Set{}
-	err := templateSet.Parse("../templates")
+	set := &templates.Set{DefaultArgs: templates.Args{"Title": "default title"}}
+	err := set.Parse(filepath.Join("..", "templates"))
 	if err != nil {
 		log.Fatalln(err)
 	}
 
-	//////////////////////////////////////////////////////////////////////////////////////
-
-	err = templateSet.Execute("hello.html", os.Stdout, Foo{FF: "", Name: "Alice"})
-	if err != nil {
-		log.Fatalln(err)
-	}
-
-	//////////////////////////////////////////////////////////////////////////////////////
-
-	p := Foo{Name: "Bob", Title: "Yay!"}
-	err = templateSet.Execute("hello.html", os.Stdout, p)
-	if err != nil {
-		log.Fatalln(err)
-	}
-	err = templateSet.Execute("world.html", os.Stdout, p)
-	if err != nil {
-		log.Fatalln(err)
-	}
-
-	//////////////////////////////////////////////////////////////////////////////////////
-
-	l := League{
-		Teams:   []string{"Liverpool", "Southhampton", "Chelsea"},
-		Founded: 1880,
-	}
-	err = templateSet.Execute("hello.html", os.Stdout, l)
-	if err != nil {
-		log.Fatalln(err)
-	}
-
-	//////////////////////////////////////////////////////////////////////////////////////
-
-	err = templateSet.Execute("hello.html", os.Stdout, map[string]interface{}{"Title": 3})
-	if err != nil {
-		log.Fatalln(err)
-	}
-
-	//////////////////////////////////////////////////////////////////////////////////////
-
-	m := map[string]interface{}{}
-	m["Crazy"] = 4
-	err = templateSet.Execute("root.html", os.Stdout, m)
+	err = set.Execute("root.html", os.Stdout, nil)
 	if err != nil {
 		log.Fatalln(err)
 	}

@@ -1,117 +1,72 @@
 package main
 
 import (
-	"bytes"
 	"errors"
 	"flag"
 	"fmt"
 	"go/ast"
 	"go/token"
 	"os"
-	"sync"
-
-	tparse "text/template/parse"
 
 	"golang.org/x/tools/go/loader"
-
-	"encoding/json"
-	"path/filepath"
-	"strings"
 )
-
-// TODO: Support output formats: json, xml.
 
 var (
 	TemplatesPath string
 	PackagePath   string
 	LeftDelim     string
 	RightDelim    string
+	OutputFormat  string
 )
 
 func main() {
 	flag.StringVar(&TemplatesPath, "t", "", "path to templates directory")
 	flag.StringVar(&PackagePath, "p", "", "package import path")
-	flag.StringVar(&LeftDelim, "ldelim", "{{", "left delimiter in templates")
-	flag.StringVar(&RightDelim, "rdelim", "}}", "right delimiter in templates")
-
+	flag.StringVar(&LeftDelim, "ldelim", "", "left delimiter in templates")
+	flag.StringVar(&RightDelim, "rdelim", "", "right delimiter in templates")
+	flag.StringVar(&OutputFormat, "format", "", "output format (plain,json)")
 	flag.Parse()
 
+	mainImpl()
+}
+
+// checkArgs checks that required arguments are provided
+// and fills in defaults for others. Defaults are filled
+// in here and not using flags package to help with testing.
+func checkArgs() {
 	if TemplatesPath == "" {
-		fmt.Fprintln(os.Stderr, "-t is required")
-		os.Exit(2)
+		exitErr("-t is required")
 	}
+
 	if PackagePath == "" {
-		fmt.Fprintln(os.Stderr, "-p is required")
-		os.Exit(2)
+		exitErr("-p is required")
 	}
 
-	var wg sync.WaitGroup
-
-	var usages map[string][]usage
-	var identsForTemplateFile map[string][]templateIdents
-	var err0, err1 error
-
-	wg.Add(1)
-	go func() {
-		defer wg.Done()
-		usages, err0 = parsePackage(PackagePath)
-	}()
-
-	wg.Add(1)
-	go func() {
-		defer wg.Done()
-		identsForTemplateFile, err1 = parseTemplates(TemplatesPath)
-	}()
-
-	wg.Wait()
-
-	// TODO: Implement decent way to show warnings.
-	// fmt.Println(usages, err0)
-	// fmt.Println(identsForTemplateFile, err1)
-
-	var results []checkResult
-
-	for k, v := range identsForTemplateFile {
-		u := usages[fmt.Sprintf("%q", k)]
-		r := check(v, u)
-		r.TemplateFile = k
-		results = append(results, r)
+	if LeftDelim == "" {
+		LeftDelim = "{{"
 	}
 
+	if RightDelim == "" {
+		RightDelim = "}}"
+	}
+
+	if OutputFormat == "" {
+		OutputFormat = "plain"
+	}
+}
+
+func exitErr(v interface{}) {
+	fmt.Fprintln(os.Stderr, v)
+	os.Exit(1)
+}
+
+func mainImpl() {
+	checkArgs()
+	results := DoAll()
+	// TODO(nishanths): Refactor into function and use OutputFormat.
 	for _, r := range results {
 		fmt.Println(&r)
 	}
-	
-	_, err := json.MarshalIndent(results, "", "	")
-	if err != nil{
-		fmt.Println("json failed")
-	}
-	/*fmt.Println(string(jsonOutput))*/
-}
-
-type checkResult struct {
-	TemplateFile string `json:"TemplateFile"`
-	Errs         []error `json:"Errs"`
-}
-
-func (c checkResult) String() string {
-	buf := bytes.Buffer{}
-	for _, e := range c.Errs {
-		buf.WriteString(fmt.Sprintf("%s: %v\n", c.TemplateFile, e))
-	}
-	return buf.String()
-}
-
-type MissingError struct {
-	TemplatePos tparse.Pos
-	SourceFile  string
-	SourcePos   token.Pos // TODO: not supported yet.
-	Key         string
-	Call        string // TODO: Also get object name.
-}
-
-func (e *MissingError) Error() string {
-	return fmt.Sprintf("%v: Missing key %q in call %q at %q:%v", e.TemplatePos, e.Key, e.Call,e.SourceFile, e.SourcePos)
 }
 
 func containsString(slice []string, target string) bool {
@@ -121,37 +76,6 @@ func containsString(slice []string, target string) bool {
 		}
 	}
 	return false
-}
-
-func check(t []templateIdents, pkgUsages []usage) checkResult {
-	// For every identifier in a template, every usage/call to the template
-	// should contain that identifier. In other words, for every identifier
-	// in a template, if there is any usage/call to the template not containing the
-	// identifier then we should emit a warning or error.
-
-	res := checkResult{}
-
-	for _, tident := range t {
-		for _, s := range tident.Idents {
-
-			for _, u := range pkgUsages {
-				if containsString(u.Keys, s) {
-					continue
-				} else {
-					res.Errs = append(res.Errs, &MissingError{
-						TemplatePos: tident.Pos,
-						SourceFile:	 u.Filename,
-						Key:         s,
-						SourcePos:   u.Pos,
-						Call:        u.Call,
-					})
-				}
-			}
-
-		}
-	}
-
-	return res
 }
 
 // identValue returns the first value for the ident.
@@ -195,8 +119,14 @@ func identToCompositeLit(id *ast.Ident) (*ast.CompositeLit, error) {
 }
 
 type call interface {
+	// Type are the names of all types that are supported.
 	Type() []string
+
+	// Func are the names of the function that are supported.
 	Func() []string
+
+	// Handler returns the template name and the keys used inside
+	// the template.
 	Handler(callexpr *ast.CallExpr) (name string, keys []string, err error)
 }
 
@@ -259,6 +189,10 @@ func (t *templatesSet) Handler(callexpr *ast.CallExpr) (string, []string, error)
 	case *ast.CompositeLit:
 		keys = compositeLitKeys(x)
 	case *ast.Ident:
+		// nil, variable name
+		if x.Name == "nil" {
+			break
+		}
 		c, err := identToCompositeLit(x)
 		if err != nil {
 			return "", nil, err
@@ -295,7 +229,7 @@ func (t *texttemplateTemplate) Handler(callexpr *ast.CallExpr) (string, []string
 	return "", nil, errors.New("unsupported type")
 }
 
-func match(typ, funcName string) (call, bool) {
+func doesMatch(typ, funcName string) (call, bool) {
 	for _, tmpllib := range templatePackages {
 		for _, t := range tmpllib.Type() {
 			if t == typ {
@@ -318,20 +252,11 @@ type usage struct {
 	Keys     []string // keys passed to template
 	Pos      token.Pos
 	Call     string
-	Filename string
 }
 
 func parsePackage(path string) (map[string][]usage, error) {
 	var conf loader.Config
-	var files []string = []string{}
-	//edge cases?
-	filepath.Walk(path, func(path string, f os.FileInfo, err error) error{
-		if (string(path[len(path) - 3:]) == ".go"){
-			files = append(files, path)
-		}
-		return nil
-	})
-	conf.CreateFromFilenames(path, files...)
+
 	// TODO: create from filenames to support source file name.
 	_, err := conf.FromArgs([]string{path}, false)
 	if err != nil {
@@ -347,10 +272,8 @@ func parsePackage(path string) (map[string][]usage, error) {
 
 	ret := make(map[string][]usage)
 	var retErr error
-	
 
-	for index, f := range ourpkg.Files {
-		
+	for _, f := range ourpkg.Files {
 		ast.Inspect(f, func(n ast.Node) bool {
 			switch x := n.(type) {
 			case *ast.CallExpr:
@@ -366,7 +289,7 @@ func parsePackage(path string) (map[string][]usage, error) {
 				typ := ourpkg.TypeOf(id).String()
 				funcName := selexpr.Sel.Name
 
-				tl, ok := match(typ, funcName)
+				tl, ok := doesMatch(typ, funcName)
 				if !ok {
 					// Not a matching call. Move on to next call expression.
 					break
@@ -377,9 +300,7 @@ func parsePackage(path string) (map[string][]usage, error) {
 					retErr = err
 					return false
 				}
-				//want to include entire path?
-				fileNameSplit := strings.Split(conf.CreatePkgs[0].Filenames[index], "/")
-				ret[name] = append(ret[name], usage{Template: name, Keys: keys, Pos: x.Fun.Pos(), Call: funcName, Filename: fileNameSplit[len(fileNameSplit) - 1]})
+				ret[name] = append(ret[name], usage{Template: name, Keys: keys, Pos: x.Fun.Pos(), Call: funcName})
 			}
 
 			return true
