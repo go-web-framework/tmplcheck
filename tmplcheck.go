@@ -7,6 +7,7 @@ import (
 	"go/ast"
 	"go/token"
 	"os"
+	"path/filepath"
 
 	"golang.org/x/tools/go/loader"
 )
@@ -132,9 +133,9 @@ type call interface {
 
 var errUnsupportedArgs = errors.New("unsupported type for arguments")
 
-var templatePackages = []call{
+var supportedTemplatePackages = []call{
 	&templatesSet{},
-	&htmltemplateTemplate{}, // Order matters: Support html/template before text/template.
+	&htmltemplateTemplate{}, // Order matters: analyze for html/template before text/template.
 	&texttemplateTemplate{},
 }
 
@@ -230,7 +231,7 @@ func (t *texttemplateTemplate) Handler(callexpr *ast.CallExpr) (string, []string
 }
 
 func doesMatch(typ, funcName string) (call, bool) {
-	for _, tmpllib := range templatePackages {
+	for _, tmpllib := range supportedTemplatePackages {
 		for _, t := range tmpllib.Type() {
 			if t == typ {
 				for _, f := range tmpllib.Func() {
@@ -244,14 +245,23 @@ func doesMatch(typ, funcName string) (call, bool) {
 	return nil, false
 }
 
-// usage represents a call to template with the keys.
+// usage represents a call to execute a template with the keys.
 //
 // TODO: Include the file name and pos.
 type usage struct {
-	Template string   // name of template
+	Path string    // path of go source file
+	Pos  token.Pos // byte position of the method call in the go source file.
+	Line int
+
+	// TODO: Col is not supported yet. But not important
+	// since method calls are generally long lines, so Col is not that great.
+	// Col  int
+
+	Obj  string // object on which method is called
+	Call string // called method name
+
+	Template string   // name of template being executed
 	Keys     []string // keys passed to template
-	Pos      token.Pos
-	Call     string
 }
 
 func parsePackage(path string) (map[string][]usage, error) {
@@ -300,7 +310,19 @@ func parsePackage(path string) (map[string][]usage, error) {
 					retErr = err
 					return false
 				}
-				ret[name] = append(ret[name], usage{Template: name, Keys: keys, Pos: x.Fun.Pos(), Call: funcName})
+
+				file := prog.Fset.File(x.Fun.Pos())
+				ret[name] = append(ret[name], usage{
+					Path: filepath.Base(file.Name()),
+					Pos:  x.Fun.Pos(),
+					Line: file.Line(x.Fun.Pos()),
+
+					Obj:  id.Name,
+					Call: funcName,
+
+					Template: name,
+					Keys:     keys,
+				})
 			}
 
 			return true
