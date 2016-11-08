@@ -4,15 +4,13 @@
 
 tmplcheck checks that templates do not use keys not passed in from Go source code in Execute calls.
 
-Currently only supports `github.com/go-web-framework/templates`. Future support for `html/template` and `text/template` is planned.
+Currently only supports `github.com/go-web-framework/templates`. Future support for `html/template` and `text/template` is planned. See TODOs in source code.
 
 tmplcheck statically analyzes your source code and templates to help prevent panics at run time such as:
 
 ```
 panic: template: test:1:2: executing "test" at <.Cnt>: can't evaluate field Cnt in type main.Inventory
 ```
-
-Work in progress. See TODOs in source code.
 
 ## Install
 
@@ -33,9 +31,10 @@ See `tmplcheck -help` for more.
 
 ## Example
 
-`tmplcheck` would output the following for the files below:
+`tmplcheck` outputs the following for the files below:
 
 ```
+root.html
 5:13: uses "Title", but hello.go:29: set.Execute is missing "Title"
 8:14: uses "X", but hello.go:29: set.Execute is missing "X"
 8:17: uses "Y", but hello.go:29: set.Execute is missing "Y"
