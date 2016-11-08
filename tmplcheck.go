@@ -1,6 +1,7 @@
 package main
 
 import (
+	"encoding/json"
 	"errors"
 	"flag"
 	"fmt"
@@ -8,9 +9,16 @@ import (
 	"go/token"
 	"os"
 	"path/filepath"
+	"strings"
 
 	"golang.org/x/tools/go/loader"
 )
+
+// TODO:
+// * Support for warnings
+// * Nested calls, better static analysis, check reflection code for panics
+// * Support for html/template and text/template
+// * Colorize plain text output
 
 var (
 	TemplatesPath string
@@ -23,9 +31,9 @@ var (
 func main() {
 	flag.StringVar(&TemplatesPath, "t", "", "path to templates directory")
 	flag.StringVar(&PackagePath, "p", "", "package import path")
-	flag.StringVar(&LeftDelim, "ldelim", "", "left delimiter in templates")
-	flag.StringVar(&RightDelim, "rdelim", "", "right delimiter in templates")
-	flag.StringVar(&OutputFormat, "format", "", "output format (plain,json)")
+	flag.StringVar(&LeftDelim, "ldelim", "{{", "left delimiter in templates")
+	flag.StringVar(&RightDelim, "rdelim", "}}", "right delimiter in templates")
+	flag.StringVar(&OutputFormat, "format", "plain", "output format (plain,json)")
 	flag.Parse()
 
 	mainImpl()
@@ -33,7 +41,7 @@ func main() {
 
 // checkArgs checks that required arguments are provided
 // and fills in defaults for others. Defaults are filled
-// in here and not using flags package to help with testing.
+// in here also besides in flags to help with testing.
 func checkArgs() {
 	if TemplatesPath == "" {
 		exitErr("-t is required")
@@ -54,6 +62,9 @@ func checkArgs() {
 	if OutputFormat == "" {
 		OutputFormat = "plain"
 	}
+	if OutputFormat != "json" && OutputFormat != "plain" {
+		exitErr(`unsupported output format: "` + OutputFormat + `"`)
+	}
 }
 
 func exitErr(v interface{}) {
@@ -61,13 +72,28 @@ func exitErr(v interface{}) {
 	os.Exit(1)
 }
 
+func output(results []checkResult) {
+	switch OutputFormat {
+	case "plain":
+		for i, r := range results {
+			fmt.Println(&r)
+			if i != len(results)-1 {
+				fmt.Println()
+			}
+		}
+	case "json":
+		enc := json.NewEncoder(os.Stdout)
+		enc.SetIndent("", "  ")
+		if err := enc.Encode(results); err != nil {
+			exitErr(err)
+		}
+	}
+}
+
 func mainImpl() {
 	checkArgs()
 	results := DoAll()
-	// TODO(nishanths): Refactor into function and use OutputFormat.
-	for _, r := range results {
-		fmt.Println(&r)
-	}
+	output(results)
 }
 
 func containsString(slice []string, target string) bool {
@@ -96,6 +122,7 @@ func compositeLitKeys(comp *ast.CompositeLit) []string {
 	for _, e := range comp.Elts {
 		k := e.(*ast.KeyValueExpr).Key
 		switch x := k.(type) {
+		// XXX: more possibilities here?
 		case *ast.BasicLit:
 			ret = append(ret, x.Value) // map
 		case *ast.Ident:
@@ -190,7 +217,7 @@ func (t *templatesSet) Handler(callexpr *ast.CallExpr) (string, []string, error)
 	case *ast.CompositeLit:
 		keys = compositeLitKeys(x)
 	case *ast.Ident:
-		// nil, variable name
+		// nil or variable name
 		if x.Name == "nil" {
 			break
 		}
@@ -203,7 +230,11 @@ func (t *templatesSet) Handler(callexpr *ast.CallExpr) (string, []string, error)
 		return "", nil, errUnsupportedArgs
 	}
 
-	return name, keys, nil
+	return trimQuotes(name), keys, nil
+}
+
+func trimQuotes(s string) string {
+	return strings.TrimSuffix(strings.TrimPrefix(s, `"`), `"`)
 }
 
 type htmltemplateTemplate struct{}
@@ -245,10 +276,8 @@ func doesMatch(typ, funcName string) (call, bool) {
 	return nil, false
 }
 
-// usage represents a call to execute a template with the keys.
-//
-// TODO: Include the file name and pos.
-type usage struct {
+// Usage represents a call to execute a template with the keys.
+type Usage struct {
 	Path string    // path of go source file
 	Pos  token.Pos // byte position of the method call in the go source file.
 	Line int
@@ -264,10 +293,9 @@ type usage struct {
 	Keys     []string // keys passed to template
 }
 
-func parsePackage(path string) (map[string][]usage, error) {
+func parsePackage(path string) (map[string][]Usage, error) {
 	var conf loader.Config
 
-	// TODO: create from filenames to support source file name.
 	_, err := conf.FromArgs([]string{path}, false)
 	if err != nil {
 		return nil, err
@@ -280,7 +308,7 @@ func parsePackage(path string) (map[string][]usage, error) {
 
 	ourpkg := prog.Package(path)
 
-	ret := make(map[string][]usage)
+	ret := make(map[string][]Usage)
 	var retErr error
 
 	for _, f := range ourpkg.Files {
@@ -312,7 +340,7 @@ func parsePackage(path string) (map[string][]usage, error) {
 				}
 
 				file := prog.Fset.File(x.Fun.Pos())
-				ret[name] = append(ret[name], usage{
+				ret[name] = append(ret[name], Usage{
 					Path: filepath.Base(file.Name()),
 					Pos:  x.Fun.Pos(),
 					Line: file.Line(x.Fun.Pos()),

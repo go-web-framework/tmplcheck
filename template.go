@@ -38,8 +38,8 @@ Other types contain or embed one of the above 3 types, thus indirectly containin
 ListNode is used for traversals. In addition to the Tree root, it is present in BranchNode.
 */
 
-// templateIdent is identifiers and their position in the file.
-type templateIdent struct {
+// TemplateIdent is identifiers and their position in the file.
+type TemplateIdent struct {
 	Path string     // Relative path of identifier's file
 	Pos  tparse.Pos // Byte position in file
 	Line int        // Line number in file
@@ -74,14 +74,14 @@ func lineCol(byteOffset int, lines [][]byte) (line int, col int) {
 	return
 }
 
-func parseTemplate(b []byte, relpath string) ([]templateIdent, error) {
+func parseTemplate(b []byte, relpath string) ([]TemplateIdent, error) {
 	const someName = ""
 	t, err := htemplate.New(someName).Delims(LeftDelim, RightDelim).Parse(string(b))
 	if err != nil {
 		return nil, err
 	}
 
-	var ret []templateIdent
+	var ret []TemplateIdent
 
 	// TODO(nishanths): Does Windows line-ending need
 	// different handling?
@@ -102,7 +102,7 @@ func parseTemplate(b []byte, relpath string) ([]templateIdent, error) {
 				break
 			}
 			l, c := lineCol(int(n.Pos), lines)
-			ret = append(ret, templateIdent{
+			ret = append(ret, TemplateIdent{
 				Path:   relpath,
 				Pos:    n.Pos,
 				Line:   l,
@@ -111,7 +111,7 @@ func parseTemplate(b []byte, relpath string) ([]templateIdent, error) {
 			})
 		case *tparse.FieldNode:
 			l, c := lineCol(int(n.Pos), lines)
-			ret = append(ret, templateIdent{
+			ret = append(ret, TemplateIdent{
 				Path:   relpath,
 				Pos:    n.Pos,
 				Line:   l,
@@ -128,8 +128,8 @@ func parseTemplate(b []byte, relpath string) ([]templateIdent, error) {
 	return ret, err
 }
 
-func parseTemplates(root string) (map[string][]templateIdent, error) {
-	ret := make(map[string][]templateIdent)
+func parseTemplates(root string) (map[string][]TemplateIdent, error) {
+	ret := make(map[string][]TemplateIdent)
 
 	err := filepath.Walk(root, func(p string, info os.FileInfo, err error) error {
 		if err != nil {

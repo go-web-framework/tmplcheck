@@ -2,35 +2,74 @@ package main
 
 import (
 	"bytes"
+	"encoding/json"
 	"fmt"
-	"go/token"
 	"sync"
 )
 
+type MissingError struct {
+	Usage         Usage
+	TemplateIdent TemplateIdent
+	MissingKey    string
+}
+
+func (e MissingError) MarshalJSON() ([]byte, error) {
+	type t struct {
+		Path string `json:"file"`
+		Line int    `json:"line"`
+		Col  int    `json:"col"`
+	}
+
+	type s struct {
+		Path       string `json:"file"`
+		Line       int    `json:"line"`
+		Key        string `json:"key"`
+		MethodCall string `json:"call"`
+	}
+
+	aux := struct {
+		Template t `json:"template"`
+		Source   s `json:"source"`
+	}{
+		t{
+			e.TemplateIdent.Path,
+			e.TemplateIdent.Line,
+			e.TemplateIdent.Col,
+		},
+		s{
+			e.Usage.Path,
+			e.Usage.Line,
+			e.MissingKey,
+			e.Usage.Obj + "." + e.Usage.Call,
+		},
+	}
+
+	return json.Marshal(aux)
+}
+
+func (e MissingError) String() string {
+	return fmt.Sprintf(
+		"%d:%d: uses %q, but %s:%d: %s.%s is missing %q",
+		e.TemplateIdent.Line, e.TemplateIdent.Col,
+		e.MissingKey, e.Usage.Path, e.Usage.Line, e.Usage.Obj, e.Usage.Call, e.MissingKey,
+	)
+}
+
 type checkResult struct {
-	TemplateFile string
-	Errs         []error
+	Template string         `json:"template"` // path of template file
+	Errs     []MissingError `json:"missing"`
 }
 
 func (c checkResult) String() string {
 	buf := bytes.Buffer{}
-	for _, e := range c.Errs {
-		buf.WriteString(fmt.Sprintf("%s: %v\n", c.TemplateFile, e))
+	buf.WriteString(fmt.Sprintf("%s\n", c.Template))
+	for i, e := range c.Errs {
+		buf.WriteString(fmt.Sprintf("%s", e))
+		if i != len(c.Errs)-1 {
+			buf.WriteString("\n")
+		}
 	}
 	return buf.String()
-}
-
-type MissingError struct {
-	SourcePos token.Pos // TODO: not supported yet.
-	Key       string
-	Call      string // TODO: Also get object name.
-}
-
-func (e *MissingError) Error() string {
-	return fmt.Sprintf(
-		"xx: Missing key %q in call %q at <filename>:%v",
-		e.Key, e.Call, e.SourcePos,
-	)
 }
 
 // DoAll returns the results of checking the source files against the
@@ -41,17 +80,14 @@ func DoAll() []checkResult {
 	if err != nil {
 		exitErr(err)
 	}
-	fmt.Println(usages)
-	fmt.Println(identsForTemplate)
-
 	return doCheck(usages, identsForTemplate)
 }
 
-func goParseAll(ppath, tpath string) (map[string][]usage, map[string][]templateIdent, error) {
+func goParseAll(ppath, tpath string) (map[string][]Usage, map[string][]TemplateIdent, error) {
 	var wg sync.WaitGroup
 
-	var usages map[string][]usage
-	var identsForTemplate map[string][]templateIdent
+	var usages map[string][]Usage
+	var identsForTemplate map[string][]TemplateIdent
 	var err0, err1 error
 
 	wg.Add(1)
@@ -78,20 +114,22 @@ func goParseAll(ppath, tpath string) (map[string][]usage, map[string][]templateI
 	return usages, identsForTemplate, nil
 }
 
-func doCheck(usages map[string][]usage, identsForTemplate map[string][]templateIdent) []checkResult {
+// doCheck compares the usages (in go source) with the identifiers used in
+// templates. One checkResult for each template is returned.
+func doCheck(usages map[string][]Usage, identsForTemplate map[string][]TemplateIdent) []checkResult {
 	var results []checkResult
 
 	for k, v := range identsForTemplate {
-		u := usages[fmt.Sprintf("%q", k)]
+		u := usages[k]
 		r := check(v, u)
-		r.TemplateFile = k
+		r.Template = k
 		results = append(results, r)
 	}
 
 	return results
 }
 
-func check(t []templateIdent, pkgUsages []usage) checkResult {
+func check(t []TemplateIdent, pkgUsages []Usage) checkResult {
 	// For every identifier in a template, every usage/call to the template
 	// should contain that identifier. In other words, for every identifier
 	// in a template, if there is any usage/call to the template not containing the
@@ -106,10 +144,10 @@ func check(t []templateIdent, pkgUsages []usage) checkResult {
 				if containsString(u.Keys, s) {
 					continue
 				} else {
-					res.Errs = append(res.Errs, &MissingError{
-						Key:       s,
-						SourcePos: u.Pos,
-						Call:      u.Call,
+					res.Errs = append(res.Errs, MissingError{
+						Usage:         u,
+						TemplateIdent: tident,
+						MissingKey:    s,
 					})
 				}
 			}
